@@ -1,9 +1,9 @@
 package com.contaazul.fiscal.controller;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.text.ParseException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Iterator;
@@ -37,6 +37,7 @@ import com.contaazul.fiscal.enttiy.Segmento;
 import com.contaazul.fiscal.service.CestService;
 import com.contaazul.fiscal.service.LeiService;
 import com.contaazul.fiscal.utils.Estados;
+import com.contaazul.fiscal.utils.FiscalFileUtils;
 
 import lombok.AllArgsConstructor;
 
@@ -45,7 +46,6 @@ import lombok.AllArgsConstructor;
 @RequestMapping("/fiscal/regras")
 public class RulesUpdate {
 
-	private static final String DOCUMENTOS = "documentos";
 	final DateTimeFormatter formatterD = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 	final NumberFormat numberFormat = NumberFormat.getInstance(Locale.GERMANY);
 
@@ -55,20 +55,12 @@ public class RulesUpdate {
 	@Autowired
 	CestService cestService;
 
-	private static final FileFilter XLSFILTER = new FileFilter() {
-		@Override
-		public boolean accept(File pathname) {
-			return pathname.getName().endsWith("xlsx");
-		}
-
-	};
-
 	@RequestMapping(value = "update", method = RequestMethod.GET)
 	public String update() {
 
-		final File dir = new File(DOCUMENTOS);
+		final File dir = new File(FiscalFileUtils.DOCUMENTOS);
 
-		for (File xls : dir.listFiles(XLSFILTER)) {
+		for (File xls : dir.listFiles(FiscalFileUtils.XLSFILTER)) {
 			System.out.println(xls.getName());
 			Lei lei = regras.findByArquivo(xls.getName());
 
@@ -127,7 +119,6 @@ public class RulesUpdate {
 										cellValue = dataFormatter.formatCellValue(cell);
 									}
 
-									// System.out.print(cellValue + "\t");
 									if (!StringUtils.isEmpty(cellValue) && cellValue.matches(".*[a-zA-Z0-9].*")) {
 
 										if (headRow == null && (cellValue.toUpperCase().startsWith("ITEM") || cellValue.toUpperCase().startsWith("CEST"))) {
@@ -195,7 +186,7 @@ public class RulesUpdate {
 												item.setOrdem(StringUtils.isNumeric(cellValue) ? Long.parseLong(cellValue) : 0L);
 											}
 											if (cCest.equals(cell.getColumnIndex())) {
-												String codigo = StringUtils.trimToNull(StringUtils.chomp(cellValue));
+												String codigo = corrigeTexto(cellValue);
 												Cest cest = cestService.findByCodigo(codigo);
 												if (cest == null) {
 													cest = new Cest();
@@ -205,43 +196,43 @@ public class RulesUpdate {
 												item.setCest(cest);
 											}
 											if (cDescricao.equals(cell.getColumnIndex())) {
-												item.setDescricao(StringUtils.trimToNull(StringUtils.chomp(cellValue)));
+												item.setDescricao(corrigeTexto(cellValue));
 											}
 											if (cOpInterna != null && cOpInterna.equals(cell.getColumnIndex())) {
-												item.setOpInterna((StringUtils.trimToNull(StringUtils.chomp(cellValue).toUpperCase())));
+												item.setOpInterna(corrigeTexto(cellValue));
 											}
 											if (cAcordos.containsKey(cell.getColumnIndex())) {
 												Acordo acordo = new Acordo();
 												acordo.setTipo(cAcordos.get(cell.getColumnIndex()));
-												acordo.setAcordo((StringUtils.trimToNull(StringUtils.chomp(cellValue).toUpperCase())));
+												acordo.setAcordo(corrigeTexto(cellValue));
 												item.addAcordo(acordo);
 											}
-											if (cAliquota.containsKey(cell.getColumnIndex()) && StringUtils.isNumeric(cellValue.replaceAll("[^0-9]+", ""))) {
+											if (cAliquota.containsKey(cell.getColumnIndex()) && isNumericc(cellValue)) {
 												Aliquota aliquota = new Aliquota();
 												aliquota.setDescricao(cAliquota.get(cell.getColumnIndex())[0]);
 												aliquota.setTipo(cAliquota.get(cell.getColumnIndex())[1]);
-												aliquota.setValor(BigDecimal.valueOf(numberFormat.parse(cellValue.replaceAll("[^0-9,]+", "")).doubleValue()));
+												aliquota.setValor(corrigeValor(cellValue));
 												item.addAliquota(aliquota);
 											}
-											if (cMVA.containsKey(cell.getColumnIndex()) && StringUtils.isNumeric(cellValue.replaceAll("[^0-9]+", ""))) {
+											if (cMVA.containsKey(cell.getColumnIndex()) && isNumericc(cellValue)) {
 												MVA aliquota = new MVA();
 												aliquota.setDescricao(cMVA.get(cell.getColumnIndex())[0]);
 												aliquota.setTipo(cMVA.get(cell.getColumnIndex())[1]);
-												aliquota.setValor(BigDecimal.valueOf(numberFormat.parse(cellValue.replaceAll("[^0-9,]+", "")).doubleValue()));
+												aliquota.setValor(corrigeValor(cellValue));
 												item.addMVA(aliquota);
 											}
-											if (cPFC.containsKey(cell.getColumnIndex()) && StringUtils.isNumeric(cellValue.replaceAll("[^0-9]+", ""))) {
+											if (cPFC.containsKey(cell.getColumnIndex()) && isNumericc(cellValue)) {
 												PFC aliquota = new PFC();
 												aliquota.setDescricao(cPFC.get(cell.getColumnIndex())[0]);
 												aliquota.setTipo(cPFC.get(cell.getColumnIndex())[1]);
-												aliquota.setValor(BigDecimal.valueOf(numberFormat.parse(cellValue.replaceAll("[^0-9,]+", "")).doubleValue()));
+												aliquota.setValor(corrigeValor(cellValue));
 												item.addPFC(aliquota);
 											}
 											if (cEspecificacaoAliquota.containsKey(cell.getColumnIndex())) {
 												Especificacao especificacao = new Especificacao();
 												especificacao.setDescricao(cEspecificacaoAliquota.get(cell.getColumnIndex())[0]);
 												especificacao.setTipo(cEspecificacaoAliquota.get(cell.getColumnIndex())[1]);
-												especificacao.setEspecificacao(StringUtils.trimToNull(StringUtils.chomp(cellValue)).toUpperCase());
+												especificacao.setEspecificacao(corrigeTexto(cellValue));
 												item.addEspecificacao(especificacao);
 											}
 										}
@@ -251,17 +242,27 @@ public class RulesUpdate {
 						}
 					}
 					regras.save(lei);
-					// Closing the workbook
 					workbook.close();
 					Runtime.getRuntime().gc();
 				} catch (Exception e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
 		}
 		updateVersao();
 		return "";
+	}
+
+	private String corrigeTexto(String cellValue) {
+		return StringUtils.trimToNull(StringUtils.chomp(cellValue).toUpperCase());
+	}
+
+	private boolean isNumericc(String cellValue) {
+		return StringUtils.isNumeric(cellValue.replaceAll("[^0-9]+", ""));
+	}
+
+	private BigDecimal corrigeValor(String cellValue) throws ParseException {
+		return BigDecimal.valueOf(numberFormat.parse(cellValue.replaceAll("[^0-9,]+", "")).doubleValue());
 	}
 
 	@Transactional

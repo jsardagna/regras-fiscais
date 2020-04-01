@@ -1,17 +1,13 @@
 package com.contaazul.fiscal.controller;
 
 import java.io.File;
-import java.io.FileFilter;
-import java.math.BigDecimal;
-import java.text.NumberFormat;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.Locale;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,17 +17,16 @@ import com.contaazul.fiscal.enttiy.LeiIPI;
 import com.contaazul.fiscal.enttiy.NCM;
 import com.contaazul.fiscal.service.LeiIPIService;
 import com.contaazul.fiscal.service.NCMService;
+import com.contaazul.fiscal.utils.FiscalFileUtils;
 
 import lombok.AllArgsConstructor;
 
 @AllArgsConstructor
 @RestController
-@RequestMapping("/fiscal/ipi/regras")
+@RequestMapping("/fiscal/ipi")
 public class IPUpdate {
 
-	private static final String DOCUMENTOS = "documentos";
-	final DateTimeFormatter formatterD = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-	final NumberFormat numberFormat = NumberFormat.getInstance(Locale.GERMANY);
+	private static final String TIPI_1_PDF = "tipi-1.pdf";
 
 	@Autowired
 	private LeiIPIService leiservice;
@@ -39,19 +34,17 @@ public class IPUpdate {
 	@Autowired
 	NCMService ncmService;
 
-	private static final FileFilter XLSFILTER = new FileFilter() {
-		@Override
-		public boolean accept(File pathname) {
-			return pathname.getName().endsWith("pdf");
-		}
+	private String cleanLine(String linha) {
+		return StringUtils.trimToNull(StringUtils.remove(StringUtils.remove(linha, "\n"), "\r"));
+	}
 
-	};
-
-	@RequestMapping(value = "update", method = RequestMethod.GET)
+	@RequestMapping(value = "/regras/update", method = RequestMethod.GET)
 	public String update() {
 
+		// Utilize Arquivo
+		updateArquivoIPI();
 		// Loading an existing document
-		final File f = new File(DOCUMENTOS + "/tipi-1.pdf");
+		final File f = FiscalFileUtils.carregaArquivo(TIPI_1_PDF);
 		try {
 			PDDocument document;
 			document = PDDocument.load(f);
@@ -65,7 +58,7 @@ public class IPUpdate {
 			reader.setEndPage(1);
 			String content = reader.getText(document);
 			int inicio = StringUtils.indexOf(content, "Última atualização") + 20;
-			LocalDate date = LocalDate.parse(StringUtils.substring(content, inicio, inicio + 12).trim(), formatterD);
+			LocalDate date = LocalDate.parse(StringUtils.substring(content, inicio, inicio + 12).trim(), IPI.formatterD);
 			LeiIPI lei = leiservice.findByAtualizacao(date);
 			if (lei != null) {
 				return "já processado";
@@ -84,27 +77,23 @@ public class IPUpdate {
 				if (index > 0) {
 					String[] paragrafo = StringUtils.substring(content, index).split("\\t");
 					for (String string : paragrafo) {
+						// Ser a Linha for de excessão
 						if (StringUtils.trim(string).startsWith("Ex ")) {
 							String[] linhas = string.split("\\n");
 							for (String linha : linhas) {
-								String clean = StringUtils.trimToNull(StringUtils.remove(StringUtils.remove(linha, "\n"), "\r"));
+								String clean = cleanLine(linha);
 								String aliquota = StringUtils.substringAfterLast(clean, " ");
-								String descricao = StringUtils.substringBeforeLast(clean, " ");
+								String descricao = StringUtils.substringBeforeLast(StringUtils.substringAfter(clean, " "), " ");
 								if (aliquota != null && aliquota.length() < 3) {
 									IPI ipi = new IPI();
 									ipi.setNcm(lastNCM);
-									if (StringUtils.isNumeric(aliquota)) {
-										ipi.setValor(BigDecimal.valueOf(numberFormat.parse(aliquota).doubleValue()));
-									} else {
-										ipi.setValor(BigDecimal.ZERO);
-										ipi.setExcessao(aliquota);
-									}
+									ipi.corrigeValor(aliquota);
 									ipi.setExcessao(descricao);
 									lei.addItem(ipi);
 								}
 							}
 						} else {
-							String clean = StringUtils.trimToNull(StringUtils.remove(StringUtils.remove(string, "\n"), "\r"));
+							String clean = cleanLine(string);
 							String codigo = StringUtils.substringBefore(clean, " ");
 							String aliquota = StringUtils.substringAfterLast(clean, " ");
 							String descricao = StringUtils.substringBeforeLast(StringUtils.substringAfter(clean, " "), " ");
@@ -118,12 +107,7 @@ public class IPUpdate {
 								}
 								IPI ipi = new IPI();
 								ipi.setNcm(ncm);
-								if (StringUtils.isNumeric(aliquota)) {
-									ipi.setValor(BigDecimal.valueOf(numberFormat.parse(aliquota).doubleValue()));
-								} else {
-									ipi.setValor(BigDecimal.ZERO);
-									ipi.setExcessao(aliquota);
-								}
+								ipi.corrigeValor(aliquota);
 								lei.addItem(ipi);
 								lastNCM = ncm;
 							}
@@ -139,7 +123,24 @@ public class IPUpdate {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		return "";
+		updateVersao();
+		return "Concluido";
+	}
+
+	private static final String URL_IPI = "http://receita.economia.gov.br/acesso-rapido/legislacao/documentos-e-arquivos/tipi-1.pdf";
+
+	@RequestMapping(value = "/arquivo/update", method = RequestMethod.GET)
+	public String updateArquivoIPI() {
+
+		FiscalFileUtils.extractFile(URL_IPI, TIPI_1_PDF, true);
+
+		return "Concluido";
+	}
+
+	@Transactional
+	@RequestMapping(value = "versao/update", method = RequestMethod.GET)
+	public void updateVersao() {
+		leiservice.updateUltimaVersao();
 	}
 
 }
