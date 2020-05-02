@@ -32,5 +32,5 @@ select distinct
   left join especificacao emva on emva.item_id = item.id  and emva.tipo = mva.tipo 
   left join especificacao epfc on epfc.item_id = item.id  and epfc.tipo = pfc.tipo   
   left join acordo on acordo.item_id = item.id		
-where lei.ultima_versao is true
+where lei.id = 1202102
 order by lei.arquivo, lei.estado, cest.codigo, aliquota.descricao

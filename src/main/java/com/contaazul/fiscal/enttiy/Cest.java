@@ -6,6 +6,10 @@ import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
 
+import com.contaazul.fiscal.enttiy.mva.Item;
+import com.contaazul.fiscal.service.mva.CestService;
+import com.contaazul.fiscal.utils.FiscalCrawlerUtils;
+
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -25,5 +29,16 @@ public class Cest {
 
 	@Column(unique = true)
 	String codigo;
+
+	public static void addCEST(CestService cestService, Item item, String value) {
+		value = FiscalCrawlerUtils.corrigeTexto(value);
+		Cest cest = cestService.findByCodigo(value);
+		if (cest == null) {
+			cest = new Cest();
+			cest.setCodigo(value);
+			cestService.save(cest);
+		}
+		item.setCest(cest);
+	}
 
 }
